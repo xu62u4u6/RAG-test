@@ -46,14 +46,17 @@ uv.lock
 .ipynb_checkpoints/
 
 # Data (keep structure, ignore content)
-data/raw/*
-!data/raw/.gitkeep
-data/processed/*
+data/raw/vghtpe/
+data/raw/pdf_cache/*.pdf
+data/collected/**
+!data/collected/.gitkeep
+data/processed/**
 !data/processed/.gitkeep
-data/vectordb/*
+data/vectordb/**
 !data/vectordb/.gitkeep
-data/questions/*
+data/questions/**
 !data/questions/.gitkeep
+data/eval_report.json
 
 # Outputs
 outputs/

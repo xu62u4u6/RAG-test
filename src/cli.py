@@ -162,5 +162,129 @@ def chat(
             break
 
 
+@app.command()
+def collect(
+    output_dir: Path = typer.Option(
+        Path("./data/collected"),
+        "--output", "-o",
+        help="收集後文件的輸出目錄",
+    ),
+    pdf_cache: Path = typer.Option(
+        Path("./data/raw/pdf_cache"),
+        "--pdf-cache",
+        help="PDF 快取目錄",
+    ),
+):
+    """從所有來源收集並處理衛教文件（HTML + PDF + 翻譯）"""
+    from src.data import DataCollectionPipeline
+
+    console.print("\n[bold blue]資料收集流程[/bold blue]\n")
+    llm = get_llm()
+    pipeline = DataCollectionPipeline(llm=llm, output_dir=output_dir, pdf_cache_dir=pdf_cache)
+    docs = pipeline.run()
+    console.print(f"\n[bold green]完成！共 {len(docs)} 份文件[/bold green]")
+
+
+@app.command()
+def preprocess(
+    input_dir: Path = typer.Option(
+        Path("./data/collected"),
+        "--input", "-i",
+        help="collect 指令的輸出目錄",
+    ),
+    output_dir: Path = typer.Option(
+        Path("./data/processed"),
+        "--output", "-o",
+        help="清理後文件的輸出目錄",
+    ),
+):
+    """清理並標準化收集到的文件"""
+    from src.data import Preprocessor
+
+    console.print(f"\n[bold blue]前處理文件[/bold blue]")
+    console.print(f"{input_dir} → {output_dir}\n")
+
+    preprocessor = Preprocessor()
+    results = preprocessor.process_directory(input_dir, output_dir)
+    console.print(f"\n[bold green]完成！{len(results)} 份文件已儲存至 {output_dir}[/bold green]")
+
+
+@app.command()
+def generate_questions(
+    data_dir: Path = typer.Option(
+        Path("./data/raw/vghtpe"),
+        "--data-dir", "-d",
+        help="衛教文章目錄",
+    ),
+    output: Path = typer.Option(
+        Path("./data/questions/questions.json"),
+        "--output", "-o",
+        help="輸出的問答題 JSON 路徑",
+    ),
+    n: int = typer.Option(5, "--num", "-n", help="每篇文章生成幾題"),
+):
+    """從衛教文章自動生成問答題"""
+    from src.question_generator import QuestionGenerator
+
+    console.print(f"\n[bold blue]自動出題[/bold blue]")
+    console.print(f"文章目錄：{data_dir}，每篇 {n} 題\n")
+
+    llm = get_llm()
+    generator = QuestionGenerator(llm=llm, questions_per_doc=n)
+    question_set = generator.generate_from_directory(data_dir)
+
+    output.parent.mkdir(parents=True, exist_ok=True)
+    question_set.save(str(output))
+    console.print(f"\n[bold green]完成！共 {len(question_set)} 題，儲存至 {output}[/bold green]")
+
+
+@app.command()
+def evaluate(
+    questions_file: Path = typer.Option(
+        Path("./data/questions/questions.json"),
+        "--questions", "-q",
+        help="問答題 JSON 路徑",
+    ),
+    output: Path = typer.Option(
+        Path("./data/eval_report.json"),
+        "--output", "-o",
+        help="評估報告輸出路徑",
+    ),
+    top_k: int = typer.Option(5, "--top-k", "-k", help="RAG 檢索文件數量"),
+    limit: int = typer.Option(0, "--limit", "-l", help="只評估前 N 題（0 = 全部）"),
+):
+    """執行 RAG 系統評估，產出品質報告"""
+    from src.rag_engine import RAGPipeline
+    from src.question_generator import QuestionSet
+    from src.evaluator import EvalRunner
+
+    vectordb_path = os.getenv("VECTORDB_PATH", "./data/vectordb")
+
+    console.print(f"\n[bold blue]RAG 評估[/bold blue]")
+
+    llm = get_llm()
+    pipeline = RAGPipeline(llm=llm, persist_directory=vectordb_path, top_k=top_k)
+    question_set = QuestionSet.load(str(questions_file))
+
+    if limit > 0:
+        question_set.pairs = question_set.pairs[:limit]
+        console.print(f"評估前 {limit} 題（共 {len(QuestionSet.load(str(questions_file)))} 題）\n")
+    else:
+        console.print(f"評估全部 {len(question_set)} 題\n")
+
+    runner = EvalRunner(rag_pipeline=pipeline, judge_llm=llm)
+    report = runner.run(question_set)
+
+    output.parent.mkdir(parents=True, exist_ok=True)
+    report.save(str(output))
+
+    # 顯示摘要
+    console.print(f"\n[bold green]評估完成[/bold green]")
+    console.print(f"  Faithfulness    : {report.avg_faithfulness:.3f}")
+    console.print(f"  Answer Relevancy: {report.avg_answer_relevancy:.3f}")
+    console.print(f"  Correctness     : {report.avg_correctness:.3f}")
+    console.print(f"\n報告已儲存至 {output}")
+
+
 if __name__ == "__main__":
     app()

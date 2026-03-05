@@ -1,5 +1,61 @@
 # 神經內科醫療 RAG 系統
 
+## 使用教學
+
+### 1. 環境設定
+請確保您已安裝 [uv](https://github.com/astral-sh/uv)，然後執行以下指令同步環境：
+```bash
+uv sync
+```
+
+### 2. 核心功能使用方式 (CLI)
+本系統主要透過 `uv run src/cli.py` 進行操作。以下是常用的指令：
+
+#### A. 資料收集與準備
+從衛福部與神經學學會收集資料，並進行清理與前處理。
+```bash
+# 收集資料
+uv run src/cli.py collect
+
+# 前處理（清理與格式化）
+uv run src/cli.py preprocess
+```
+
+#### B. 建立索引
+將資料存入向量資料庫以便檢索。
+```bash
+uv run src/cli.py index --data-dir ./data/processed
+```
+
+#### C. 與系統對話
+您可以使用單次查詢或互動模式。
+```bash
+# 互動模式
+uv run src/cli.py chat
+
+# 單次查詢 (可搭配 --sources 顯示來源)
+uv run src/cli.py query "阿茲海默症的新藥有哪些？" --sources
+```
+
+#### D. 啟動伺服器與 Web UI (API)
+如果您偏好使用網頁介面或需要 HTTP API，可以啟動 FastAPI 伺服器：
+```bash
+uv run src/cli.py serve
+```
+*   **網頁對話介面**: [http://127.0.0.1:8000/](http://127.0.0.1:8000/)
+*   **API 文件 (Swagger)**: [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs)
+
+#### E. 自動出題與系統評估
+```bash
+# 自動從文章中生成問答集
+uv run src/cli.py generate-questions --num 5
+
+# 執行系統評估 (產出 Faithfulness, Correctness 等指標)
+uv run src/cli.py evaluate
+```
+
+---
+
 > 榮民醫院神經內科門診病人問答系統
 
 ## 專案概述

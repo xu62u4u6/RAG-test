@@ -39,6 +39,173 @@ def get_llm():
 
 
 @app.command()
+def init():
+    """首次使用設定精靈 — 互動式建立 .env 設定檔"""
+    import shutil
+
+    env_path = Path(".env")
+
+    skip_env_setup = False
+    if env_path.exists():
+        overwrite = typer.confirm("⚠️  .env 已存在，是否覆寫？", default=False)
+        if not overwrite:
+            console.print("[dim]保留現有 .env 設定[/dim]")
+            skip_env_setup = True
+
+    console.print(Panel(
+        "歡迎使用神經內科 RAG 系統！\n以下將引導您完成首次設定。",
+        title="[bold blue]初始化設定[/bold blue]",
+        border_style="blue",
+    ))
+
+    if not skip_env_setup:
+        # 1. 選擇 LLM 提供商
+        provider = typer.prompt(
+            "選擇 LLM 提供商 (openai / anthropic)",
+            default="openai",
+        ).strip().lower()
+        if provider not in ("openai", "anthropic"):
+            console.print(f"[red]不支援的提供商: {provider}[/red]")
+            raise typer.Exit(1)
+
+        # 2. 輸入 API Key
+        if provider == "openai":
+            api_key = typer.prompt("請輸入 OpenAI API Key", hide_input=True)
+            model = typer.prompt("OpenAI 模型名稱", default="gpt-4o-mini")
+            env_lines = [
+                f"OPENAI_API_KEY={api_key}",
+                f"OPENAI_MODEL={model}",
+                "",
+                "# ANTHROPIC_API_KEY=",
+                "# ANTHROPIC_MODEL=claude-sonnet-4-20250514",
+            ]
+        else:
+            api_key = typer.prompt("請輸入 Anthropic API Key", hide_input=True)
+            model = typer.prompt("Anthropic 模型名稱", default="claude-sonnet-4-20250514")
+            env_lines = [
+                "# OPENAI_API_KEY=",
+                "# OPENAI_MODEL=gpt-4o-mini",
+                "",
+                f"ANTHROPIC_API_KEY={api_key}",
+                f"ANTHROPIC_MODEL={model}",
+            ]
+
+        # 3. 其他設定
+        embedding = typer.prompt("Embedding 模型", default="BAAI/bge-large-zh-v1.5")
+        vectordb = typer.prompt("向量資料庫路徑", default="./data/vectordb")
+
+        # 4. 寫入 .env
+        env_content = "\n".join([
+            f"LLM_PROVIDER={provider}",
+            "",
+            *env_lines,
+            "",
+            f"EMBEDDING_MODEL={embedding}",
+            f"VECTORDB_PATH={vectordb}",
+            "",
+        ])
+        env_path.write_text(env_content, encoding="utf-8")
+        console.print(f"\n[green]✅ .env 已建立[/green]")
+
+    # 5. 檢查 uv 是否可用
+    if shutil.which("uv"):
+        console.print("[green]✅ uv 已安裝[/green]")
+    else:
+        console.print("[yellow]⚠️  未偵測到 uv，請先安裝: curl -LsSf https://astral.sh/uv/install.sh | sh[/yellow]")
+        raise typer.Exit(1)
+
+    # 6. 自動執行資料準備流程（檢查哪些步驟已完成）
+    load_dotenv(override=True)
+    embedding = os.getenv("EMBEDDING_MODEL", "BAAI/bge-large-zh-v1.5")
+    vectordb = os.getenv("VECTORDB_PATH", "./data/vectordb")
+
+    collected_dir = Path("./data/collected")
+    processed_dir = Path("./data/processed")
+    vectordb_dir = Path(vectordb)
+
+    has_collected = collected_dir.exists() and any(collected_dir.iterdir())
+    has_processed = processed_dir.exists() and any(processed_dir.iterdir())
+    has_index = vectordb_dir.exists() and any(vectordb_dir.iterdir())
+
+    # 判斷需要執行哪些步驟
+    pending_steps = []
+    if not has_collected:
+        pending_steps.append("收集衛教文件")
+    if not has_processed:
+        pending_steps.append("前處理文件")
+    if not has_index:
+        pending_steps.append("建立向量索引")
+
+    if not pending_steps:
+        console.print("\n[green]✅ 資料收集、前處理、向量索引皆已完成[/green]")
+        console.print(Panel(
+            "  uv run src/cli.py chat             # 互動對話\n"
+            "  uv run src/cli.py query \"問題\"      # 單次查詢\n"
+            "  uv run src/cli.py serve             # 啟動 Web UI",
+            title="[bold green]可以開始使用[/bold green]",
+            border_style="green",
+        ))
+        raise typer.Exit()
+
+    console.print(f"\n[yellow]尚未完成的步驟：{', '.join(pending_steps)}[/yellow]")
+    run_pipeline = typer.confirm("是否立即執行？", default=True)
+
+    if not run_pipeline:
+        console.print(Panel(
+            "1. uv run src/cli.py collect         # 收集衛教文件\n"
+            "2. uv run src/cli.py preprocess      # 前處理文件\n"
+            "3. uv run src/cli.py index           # 建立向量索引\n"
+            "4. uv run src/cli.py chat            # 開始對話！",
+            title="[bold green]後續步驟[/bold green]",
+            border_style="green",
+        ))
+        raise typer.Exit()
+
+    step = 1
+    total = len(pending_steps)
+
+    if not has_collected:
+        console.print(f"\n[bold blue]Step {step}/{total} — 收集衛教文件[/bold blue]")
+        from src.data import DataCollectionPipeline
+        llm = get_llm()
+        pipeline = DataCollectionPipeline(
+            llm=llm,
+            output_dir=collected_dir,
+            pdf_cache_dir=Path("./data/raw/pdf_cache"),
+        )
+        docs = pipeline.run()
+        console.print(f"[green]✅ 收集完成，共 {len(docs)} 份文件[/green]\n")
+        step += 1
+
+    if not has_processed:
+        console.print(f"[bold blue]Step {step}/{total} — 前處理文件[/bold blue]")
+        from src.data import Preprocessor
+        preprocessor = Preprocessor()
+        results = preprocessor.process_directory(collected_dir, processed_dir)
+        console.print(f"[green]✅ 前處理完成，{len(results)} 份文件[/green]\n")
+        step += 1
+
+    if not has_index:
+        console.print(f"[bold blue]Step {step}/{total} — 建立向量索引[/bold blue]")
+        from src.rag_engine import DocumentIndexer
+        indexer = DocumentIndexer(
+            embedding_model=embedding,
+            persist_directory=vectordb,
+        )
+        indexer.index_from_directory(processed_dir)
+        console.print("[green]✅ 索引建立完成[/green]\n")
+
+    console.print(Panel(
+        "初始化完成！您可以開始使用：\n\n"
+        "  uv run src/cli.py chat             # 互動對話\n"
+        "  uv run src/cli.py query \"問題\"      # 單次查詢\n"
+        "  uv run src/cli.py serve             # 啟動 Web UI",
+        title="[bold green]🎉 設定完成[/bold green]",
+        border_style="green",
+    ))
+
+
+@app.command()
 def index(
     data_dir: Path = typer.Option(
         Path("./data/raw/vghtpe"),

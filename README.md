@@ -2,10 +2,24 @@
 
 ## 使用教學
 
-### 1. 環境設定
-請確保您已安裝 [uv](https://github.com/astral-sh/uv)，然後執行以下指令同步環境：
+### 1. 快速開始（首次使用）
+
+請確保您已安裝 [uv](https://github.com/astral-sh/uv)，然後執行：
+
 ```bash
-uv sync
+uv sync                    # 安裝相依套件
+uv run src/cli.py init     # 首次設定精靈
+```
+
+`init` 指令會互動式引導您完成：
+1. 選擇 LLM 提供商（OpenAI / Anthropic）並輸入 API Key
+2. 設定模型與向量資料庫路徑
+3. 自動產生 `.env` 設定檔
+4. 自動執行資料收集、前處理、向量索引建立
+
+完成後即可直接開始對話：
+```bash
+uv run src/cli.py chat
 ```
 
 ### 2. 核心功能使用方式 (CLI)
@@ -454,20 +468,19 @@ LLM 生成回答
 
 ```bash
 # 安裝依賴
-pip install -r requirements.txt
+uv sync
 
-# 設定環境變數
-cp .env.example .env
-# 編輯 .env 填入 API keys
+# 首次設定（互動式引導 + 自動建立資料與索引）
+uv run src/cli.py init
 
-# 執行爬蟲
-python scripts/scrape.py
+# 開始對話
+uv run src/cli.py chat
 
-# 生成問題集
-python scripts/generate_questions.py --persona elderly_woman --count 50
+# 自動從文章中生成問答集
+uv run src/cli.py generate-questions --num 5
 
-# 執行評估
-python scripts/run_evaluation.py --questions data/questions/synthetic_questions.json
+# 執行 RAG 系統評估（產出 Faithfulness, Correctness 等指標）
+uv run src/cli.py evaluate
 ```
 
 ## 設定說明

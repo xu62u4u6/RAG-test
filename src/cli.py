@@ -286,5 +286,23 @@ def evaluate(
     console.print(f"\n報告已儲存至 {output}")
 
 
+@app.command()
+def serve(
+    host: str = typer.Option("127.0.0.1", "--host", "-h", help="API 伺服器主機位址"),
+    port: int = typer.Option(8000, "--port", "-p", help="API 伺服器通訊埠"),
+    reload: bool = typer.Option(True, "--reload", "-r", help="是否啟用熱重載 (開發模式)"),
+):
+    """啟動 FastAPI 後端伺服器與 Web UI"""
+    import uvicorn
+    
+    console.print("\n[bold blue]啟動 RAG 問答系統伺服器[/bold blue]")
+    console.print(f"[green]伺服器位址:[/green] http://{host}:{port}")
+    console.print(f"[green]API 文件:[/green] http://{host}:{port}/docs")
+    console.print(f"[green]網頁對話:[/green] http://{host}:{port}/")
+    console.print("[yellow]按下 Ctrl+C 停止伺服器[/yellow]\n")
+
+    uvicorn.run("src.api.main:app", host=host, port=port, reload=reload)
+
+
 if __name__ == "__main__":
     app()

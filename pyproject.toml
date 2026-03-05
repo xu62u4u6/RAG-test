@@ -11,29 +11,23 @@ dependencies = [
     "langchain>=0.3.0",
     "langchain-core>=0.3.0",
     "langchain-community>=0.3.0",
-
     # === LLM 提供商 ===
     "langchain-openai>=0.2.0",       # OpenAI GPT
     "langchain-anthropic>=0.2.0",    # Claude
     # "langchain-ollama>=0.2.0",     # 本地部署時取消註解
-
     # === Embedding ===
     "sentence-transformers>=3.0.0",  # 載入 BGE 模型
     "langchain-huggingface>=0.1.0",  # HuggingFace 整合
-
     # === 向量資料庫 ===
     "chromadb>=0.5.0",               # 開發用向量 DB
     "langchain-chroma>=0.1.0",       # Chroma 整合
-
     # === 爬蟲相關 ===
     "httpx>=0.27.0",                 # HTTP 請求
     "beautifulsoup4>=4.12.0",        # HTML 解析
     "lxml>=5.0.0",                   # 解析器後端
     # "playwright>=1.40.0",          # 動態網頁（需要時安裝）
-
     # === 文件處理 ===
     "pymupdf>=1.24.0",               # PDF 解析
-
     # === 設定與工具 ===
     "pydantic>=2.0.0",               # 資料驗證
     "pydantic-settings>=2.0.0",      # 設定管理
@@ -42,6 +36,8 @@ dependencies = [
     "typer>=0.12.0",                 # CLI 介面
     "rich>=13.0.0",                  # 美化輸出
     "loguru>=0.7.0",                 # 日誌
+    "fastapi>=0.135.1",
+    "uvicorn>=0.41.0",
 ]
 
 [project.optional-dependencies]

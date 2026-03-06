@@ -2,18 +2,53 @@
 FastAPI 應用程式主程式與簡易 Web 介面
 """
 
-from fastapi import FastAPI
-from fastapi.responses import HTMLResponse
+import os
+import asyncio
+from contextlib import asynccontextmanager
+
+from fastapi import FastAPI, Request
+from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware
 
 from src.api.router import router
+from src.api.dependencies import init_pipeline_background
+
+
+class TokenAuthMiddleware(BaseHTTPMiddleware):
+    """簡易 token 驗證，從 URL query param ?token=xxx 驗證"""
+
+    async def dispatch(self, request: Request, call_next):
+        api_secret = os.getenv("API_SECRET")
+        if not api_secret:
+            return await call_next(request)
+
+        token = request.query_params.get("token")
+        if token != api_secret:
+            return JSONResponse(
+                status_code=403,
+                content={"detail": "請在網址加上 ?token=YOUR_TOKEN"},
+            )
+
+        return await call_next(request)
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # 啟動時在背景載入模型（不阻塞 server 啟動）
+    asyncio.create_task(init_pipeline_background())
+    yield
 
 
 app = FastAPI(
     title="神經內科醫療 RAG 系統 API",
     description="提供門診問答系統的 HTTP API 服務",
-    version="1.0.0"
+    version="1.0.0",
+    lifespan=lifespan,
 )
+
+# Token 驗證
+app.add_middleware(TokenAuthMiddleware)
 
 # 加入 CORS Middleware 確保可以從各種前端呼叫
 app.add_middleware(
@@ -96,6 +131,9 @@ HTML_CONTENT = """
         const questionInput = document.getElementById('question-input');
         const sendBtn = document.getElementById('send-btn');
 
+        // 從 URL 取得 token，API 請求時自動帶上
+        const urlToken = new URLSearchParams(window.location.search).get('token') || '';
+
         // 按 Enter 鍵送出
         questionInput.addEventListener('keypress', function (e) {
             if (e.key === 'Enter') {
@@ -165,10 +203,13 @@ HTML_CONTENT = """
                 sources.forEach((src, idx) => {
                     const simScore = Math.round(src.score * 100);
                     // 提供懸浮提示(Tooltip)來顯示部分內容預覽
+                    const titleHtml = src.url
+                        ? `<a href="${src.url}" target="_blank" rel="noopener" class="font-medium text-blue-600 hover:text-blue-800 underline underline-offset-2 transition-colors">${src.title}</a>`
+                        : `<span class="font-medium text-gray-700">${src.title}</span>`;
                     sourceHtml += `<li class="flex items-start gap-2 group cursor-help" title="${src.content_preview.replace(/"/g, '&quot;')}">
                         <span class="inline-flex items-center justify-center bg-blue-100 text-blue-700 rounded-full h-5 w-5 text-xs font-bold shrink-0">${idx + 1}</span>
                         <div class="leading-tight">
-                            <span class="font-medium text-gray-700 group-hover:text-blue-600 transition-colors">${src.title}</span>
+                            ${titleHtml}
                             <span class="text-xs text-gray-400 ml-1">(${simScore}% 相關)</span>
                         </div>
                     </li>`;
@@ -201,7 +242,7 @@ HTML_CONTENT = """
 
             try {
                 // 發送 API 請求
-                const response = await fetch('/api/chat', {
+                const response = await fetch('/api/chat?token=' + encodeURIComponent(urlToken), {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ question: question, top_k: 5 })

@@ -28,6 +28,7 @@ async def chat_endpoint(
             SourceInfo(
                 title=src["title"],
                 source=src["source"],
+                url=src.get("url", ""),
                 score=src["score"],
                 content_preview=src["content_preview"]
             )
@@ -41,9 +42,11 @@ async def chat_endpoint(
             sources=sources
         )
         
-    except ValueError as e:
-        # 處理尚未建立索引的情況
-        raise HTTPException(status_code=400, detail=str(e))
+    except ValueError:
+        raise HTTPException(
+            status_code=503,
+            detail="向量索引尚未建立，請先執行 index 指令匯入文件。",
+        )
     except Exception as e:
         # 處理其他例外
         raise HTTPException(status_code=500, detail=f"系統內部錯誤: {str(e)}")

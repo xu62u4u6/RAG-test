@@ -35,6 +35,7 @@ dependencies = [
     "python-dotenv>=1.0.0",          # 環境變數
     "typer>=0.12.0",                 # CLI 介面
     "rich>=13.0.0",                  # 美化輸出
+    "tqdm>=4.66.0",                  # 進度條
     "loguru>=0.7.0",                 # 日誌
     "fastapi>=0.135.1",
     "uvicorn>=0.41.0",

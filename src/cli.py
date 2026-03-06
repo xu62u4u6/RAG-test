@@ -125,7 +125,14 @@ def init():
 
     has_collected = collected_dir.exists() and any(collected_dir.iterdir())
     has_processed = processed_dir.exists() and any(processed_dir.iterdir())
-    has_index = vectordb_dir.exists() and any(vectordb_dir.iterdir())
+    has_index = False
+    chroma_db = vectordb_dir / "chroma.sqlite3"
+    if chroma_db.exists():
+        import sqlite3
+        con = sqlite3.connect(str(chroma_db))
+        count = con.execute("SELECT COUNT(*) FROM embeddings").fetchone()[0]
+        con.close()
+        has_index = count > 0
 
     # 判斷需要執行哪些步驟
     pending_steps = []
@@ -455,7 +462,7 @@ def evaluate(
 
 @app.command()
 def serve(
-    host: str = typer.Option("127.0.0.1", "--host", "-h", help="API 伺服器主機位址"),
+    host: str = typer.Option("0.0.0.0", "--host", "-h", help="API 伺服器主機位址"),
     port: int = typer.Option(8000, "--port", "-p", help="API 伺服器通訊埠"),
     reload: bool = typer.Option(True, "--reload", "-r", help="是否啟用熱重載 (開發模式)"),
 ):

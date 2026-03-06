@@ -16,6 +16,7 @@ class SourceInfo(BaseModel):
     """參考來源資訊"""
     title: str = Field(..., description="文件標題")
     source: str = Field(..., description="來源名稱")
+    url: str = Field("", description="來源網址")
     score: float = Field(..., description="關聯度分數")
     content_preview: str = Field(..., description="內容預覽")
 

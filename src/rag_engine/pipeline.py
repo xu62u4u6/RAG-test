@@ -2,6 +2,7 @@
 RAG Pipeline - 整合檢索與生成的完整流程
 """
 
+import asyncio
 from pathlib import Path
 from dataclasses import dataclass
 
@@ -78,15 +79,8 @@ class RAGPipeline:
         # 3. 生成回答
         answer = self.generator.generate(question, context)
 
-        # 4. 整理來源資訊
-        sources = []
-        for doc, score in docs_with_scores:
-            sources.append({
-                "title": doc.metadata.get("title", "未知"),
-                "source": doc.metadata.get("source", ""),
-                "score": float(score),
-                "content_preview": doc.page_content[:200] + "...",
-            })
+        # 4. 整理來源資訊（Chroma 回傳 L2 距離，轉換為 0~1 相似度）
+        sources = self._build_sources(docs_with_scores)
 
         return RAGResponse(
             question=question,
@@ -101,20 +95,15 @@ class RAGPipeline:
             raise ValueError("尚未建立索引，請先執行 index_documents()")
 
         k = top_k or self.top_k
-        docs_with_scores = self.retriever.retrieve_with_scores(question, top_k=k)
+        docs_with_scores = await asyncio.to_thread(
+            self.retriever.retrieve_with_scores, question, top_k=k
+        )
         docs = [doc for doc, _ in docs_with_scores]
         context = self.retriever.format_context(docs)
 
         answer = await self.generator.agenerate(question, context)
 
-        sources = []
-        for doc, score in docs_with_scores:
-            sources.append({
-                "title": doc.metadata.get("title", "未知"),
-                "source": doc.metadata.get("source", ""),
-                "score": float(score),
-                "content_preview": doc.page_content[:200] + "...",
-            })
+        sources = self._build_sources(docs_with_scores)
 
         return RAGResponse(
             question=question,
@@ -122,6 +111,23 @@ class RAGPipeline:
             sources=sources,
             context=context,
         )
+
+    @staticmethod
+    def _build_sources(docs_with_scores: list) -> list[dict]:
+        """將檢索結果轉換為來源資訊，同文件合併、距離轉相似度"""
+        merged: dict[str, dict] = {}
+        for doc, distance in docs_with_scores:
+            title = doc.metadata.get("title", "未知")
+            similarity = 1.0 / (1.0 + float(distance))
+            if title not in merged or similarity > merged[title]["score"]:
+                merged[title] = {
+                    "title": title,
+                    "source": doc.metadata.get("source", ""),
+                    "url": doc.metadata.get("url", ""),
+                    "score": similarity,
+                    "content_preview": doc.page_content[:200] + "...",
+                }
+        return sorted(merged.values(), key=lambda x: x["score"], reverse=True)
 
 
 def create_pipeline(

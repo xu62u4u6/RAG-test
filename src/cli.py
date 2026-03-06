@@ -461,6 +461,114 @@ def evaluate(
 
 
 @app.command()
+def security_test(
+    questions_file: Path = typer.Option(
+        Path("./data/questions/security/prompt_injection.json"),
+        "--questions", "-q",
+        help="安全測試題目 JSON 路徑",
+    ),
+    output: Path = typer.Option(
+        Path("./data/security_report.json"),
+        "--output", "-o",
+        help="安全測試報告輸出路徑",
+    ),
+    top_k: int = typer.Option(5, "--top-k", "-k", help="RAG 檢索文件數量"),
+    limit: int = typer.Option(0, "--limit", "-l", help="只測試前 N 題（0 = 全部）"),
+    category: str = typer.Option("", "--category", "-c", help="只測試指定分類 ID（如 compound_attacks）"),
+    difficulty: str = typer.Option("", "--difficulty", "-d", help="只測試指定難度（basic/intermediate/advanced）"),
+):
+    """執行 Prompt Injection 安全性測試"""
+    from src.rag_engine import RAGPipeline
+    from src.evaluator.security_judge import (
+        SecurityJudge, SecurityReport, SecurityTestResult, load_security_questions,
+    )
+
+    vectordb_path = os.getenv("VECTORDB_PATH", "./data/vectordb")
+
+    console.print("\n[bold red]安全性測試 (Prompt Injection)[/bold red]")
+
+    # 載入題目
+    all_questions = load_security_questions(str(questions_file))
+
+    if category:
+        all_questions = [q for q in all_questions if q["category_id"] == category]
+        console.print(f"篩選分類：{category}")
+    if difficulty:
+        all_questions = [q for q in all_questions if q["difficulty"] == difficulty]
+        console.print(f"篩選難度：{difficulty}")
+    if limit > 0:
+        all_questions = all_questions[:limit]
+
+    console.print(f"共 {len(all_questions)} 題\n")
+
+    if not all_questions:
+        console.print("[yellow]沒有符合條件的題目[/yellow]")
+        raise typer.Exit()
+
+    # 初始化
+    llm = get_llm()
+    pipeline = RAGPipeline(llm=llm, persist_directory=vectordb_path, top_k=top_k)
+    judge = SecurityJudge(llm)
+    report = SecurityReport()
+
+    for i, q in enumerate(all_questions, 1):
+        console.print(f"[{i:>3}/{len(all_questions)}] [{q['difficulty']}] {q['id']} - {q['attack_vector']}")
+
+        # 送入 RAG pipeline
+        try:
+            rag_response = pipeline.query(q["prompt"])
+            answer = rag_response.answer
+        except Exception as e:
+            answer = f"[系統錯誤: {e}]"
+
+        # 建立結果並評分
+        result = SecurityTestResult(
+            id=q["id"],
+            category=q["category"],
+            difficulty=q["difficulty"],
+            prompt=q["prompt"],
+            attack_vector=q["attack_vector"],
+            expected_behavior=q["expected_behavior"],
+            rag_answer=answer,
+        )
+        result = judge.evaluate(result)
+        report.results.append(result)
+
+        status = "[green]PASS[/green]" if result.passed else "[red]FAIL[/red]"
+        console.print(f"        {status}  score={result.safety_score:.1f}  {result.reasoning[:60]}")
+
+    # 儲存報告
+    output.parent.mkdir(parents=True, exist_ok=True)
+    report.save(str(output))
+
+    # 顯示摘要
+    console.print(f"\n[bold]{'='*50}[/bold]")
+    console.print(f"[bold]安全測試結果[/bold]")
+    console.print(f"  通過率：{report.passed}/{report.total} ({report.pass_rate:.1%})")
+    console.print(f"  平均安全分數：{report.avg_safety_score:.3f}")
+
+    console.print(f"\n[bold]依分類：[/bold]")
+    for cat, stats in report.summary_by_category().items():
+        rate = stats["pass_rate"]
+        color = "green" if rate >= 0.8 else "yellow" if rate >= 0.5 else "red"
+        console.print(f"  [{color}]{cat}: {stats['passed']}/{stats['total']} ({rate:.0%})[/{color}]")
+
+    console.print(f"\n[bold]依難度：[/bold]")
+    for diff, stats in report.summary_by_difficulty().items():
+        rate = stats["pass_rate"]
+        color = "green" if rate >= 0.8 else "yellow" if rate >= 0.5 else "red"
+        console.print(f"  [{color}]{diff}: {stats['passed']}/{stats['total']} ({rate:.0%})[/{color}]")
+
+    if report.failed > 0:
+        console.print(f"\n[bold red]失敗的測試：[/bold red]")
+        for r in report.results:
+            if not r.passed:
+                console.print(f"  [red]{r.id}[/red] ({r.category}) - {r.attack_vector}")
+
+    console.print(f"\n報告已儲存至 {output}")
+
+
+@app.command()
 def serve(
     host: str = typer.Option("0.0.0.0", "--host", "-h", help="API 伺服器主機位址"),
     port: int = typer.Option(8000, "--port", "-p", help="API 伺服器通訊埠"),

@@ -57,6 +57,7 @@ data/vectordb/**
 data/questions/**
 !data/questions/.gitkeep
 data/eval_report.json
+data/security_report.json
 
 # Outputs
 outputs/
